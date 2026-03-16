@@ -14,7 +14,7 @@ from mediapipe.tasks.python.vision import (
 )
 
 # ── Configuration ──────────────────────────────────────────────
-MODEL_PATH = "hand_landmarker.task"
+MODEL_PATH = "libs/hand_landmarker.task"
 DISPLAY_WIDTH = 1920
 DISPLAY_HEIGHT = 1080
 THUMB_TIP = 4

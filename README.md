@@ -11,7 +11,7 @@ The app detects your hands through the webcam and tracks **21 landmarks** per ha
 Each hand has 21 tracked points (0-20), organized by finger:
 
 <p align="center">
-  <img src="mediapipe_hand_landmarks.svg" alt="MediaPipe Hand Landmarks" width="600">
+  <img src="images/mediapipe_hand_landmarks.svg" alt="MediaPipe Hand Landmarks" width="600">
 </p>
 
 | Finger | Landmarks | Color |
@@ -30,7 +30,7 @@ The **bold tip landmarks** (4, 8, 12) are the ones used by this app to draw shap
 To know if a finger is **open** (extended) or **closed** (curled), we compare the **y position** of the **tip** to the **MCP (base knuckle)**:
 
 <p align="center">
-  <img src="finger_open_vs_closed.svg" alt="Finger Open vs Closed Detection" width="600">
+  <img src="images/finger_open_vs_closed.svg" alt="Finger Open vs Closed Detection" width="600">
 </p>
 
 > **Important:** In image coordinates, `y = 0` is at the **top** of the screen. So a smaller y value means higher on screen.
