@@ -1,4 +1,5 @@
 import time
+from enum import IntEnum
 
 import cv2
 import numpy as np
@@ -17,12 +18,15 @@ from mediapipe.tasks.python.vision import (
 MODEL_PATH = "libs/hand_landmarker.task"
 DISPLAY_WIDTH = 1920
 DISPLAY_HEIGHT = 1080
-THUMB_TIP = 4
-INDEX_FINGER_TIP = 8
-MIDDLE_FINGER_TIP = 12
 SHAPE_THICKNESS = 3
 
-# Color palette: (name, BGR color)
+
+class HandLandmark(IntEnum):
+    """MediaPipe HandLandmark indices."""
+    THUMB_TIP = 4
+    INDEX_FINGER_TIP = 8
+    MIDDLE_FINGER_TIP = 12
+
 COLOR_PALETTE = [
     ("Green", (0, 255, 0)),
     ("Red", (0, 0, 255)),
@@ -30,15 +34,42 @@ COLOR_PALETTE = [
     ("Yellow", (0, 255, 255)),
 ]
 
-# Shape palette: names for the 3 drawable shapes
 SHAPE_TYPES = ["Circle", "Rect", "Cube"]
 
-# Palette button size and spacing
 BUTTON_SIZE = 60
 BUTTON_GAP = 20
-BUTTON_Y = 20  # top margin for color palette
-SHAPE_X = 20   # left margin for shape palette
-SHAPE_Y = 150  # top offset for shape palette
+BUTTON_Y = 20
+SHAPE_X = 20
+SHAPE_Y = 150
+
+_COLOR_BUTTON_RECTS = None
+_SHAPE_BUTTON_RECTS = None
+_LANDMARK_STYLE = None
+_CONNECTION_STYLE = None
+_CACHED_CAMERA_RES = None
+
+# Pre-compute reusable drawing specs (avoid recreating every frame)
+_DEFAULT_LANDMARK_STYLE = mp_drawing_styles.get_default_hand_landmarks_style()
+_DEFAULT_CONNECTION_STYLE = mp_drawing_styles.get_default_hand_connections_style()
+
+
+def _init_button_caches(frame_width):
+    """Cache button rects and styles once at startup."""
+    global _COLOR_BUTTON_RECTS, _SHAPE_BUTTON_RECTS
+    if _COLOR_BUTTON_RECTS is None:
+        total_w = len(COLOR_PALETTE) * BUTTON_SIZE + (len(COLOR_PALETTE) - 1) * BUTTON_GAP
+        start_x = (frame_width - total_w) // 2
+        _COLOR_BUTTON_RECTS = [
+            (start_x + i * (BUTTON_SIZE + BUTTON_GAP), BUTTON_Y,
+             start_x + i * (BUTTON_SIZE + BUTTON_GAP) + BUTTON_SIZE, BUTTON_Y + BUTTON_SIZE)
+            for i in range(len(COLOR_PALETTE))
+        ]
+    if _SHAPE_BUTTON_RECTS is None:
+        _SHAPE_BUTTON_RECTS = [
+            (SHAPE_X, SHAPE_Y + i * (BUTTON_SIZE + BUTTON_GAP),
+             SHAPE_X + BUTTON_SIZE, SHAPE_Y + i * (BUTTON_SIZE + BUTTON_GAP) + BUTTON_SIZE)
+            for i in range(len(SHAPE_TYPES))
+        ]
 
 
 # ── Landmarker Setup ──────────────────────────────────────────
@@ -58,6 +89,8 @@ def create_hand_landmarker():
 def open_camera():
     """Open the webcam and set the resolution."""
     cam = cv2.VideoCapture(index=0)
+    if not cam.isOpened():
+        raise RuntimeError("Cannot open camera")
     cam.set(cv2.CAP_PROP_FRAME_WIDTH, DISPLAY_WIDTH)
     cam.set(cv2.CAP_PROP_FRAME_HEIGHT, DISPLAY_HEIGHT)
     return cam
@@ -90,15 +123,10 @@ def get_right_hand_index(results):
 # ── Color Palette (top center) ─────────────────────────────────
 
 def get_color_button_rects(frame_width):
-    """Calculate the position of each color button centered at the top."""
-    total_width = len(COLOR_PALETTE) * BUTTON_SIZE + (len(COLOR_PALETTE) - 1) * BUTTON_GAP
-    start_x = (frame_width - total_width) // 2
-
-    rects = []
-    for i in range(len(COLOR_PALETTE)):
-        x = start_x + i * (BUTTON_SIZE + BUTTON_GAP)
-        rects.append((x, BUTTON_Y, x + BUTTON_SIZE, BUTTON_Y + BUTTON_SIZE))
-    return rects
+    """Return cached color button rects."""
+    if _COLOR_BUTTON_RECTS is None:
+        _init_button_caches(frame_width)
+    return _COLOR_BUTTON_RECTS
 
 
 def draw_color_palette(frame, selected_index):
@@ -131,12 +159,10 @@ def check_color_selection(finger_pos, frame_width):
 # ── Shape Palette (left side) ──────────────────────────────────
 
 def get_shape_button_rects():
-    """Calculate the position of each shape button on the left side."""
-    rects = []
-    for i in range(len(SHAPE_TYPES)):
-        y = SHAPE_Y + i * (BUTTON_SIZE + BUTTON_GAP)
-        rects.append((SHAPE_X, y, SHAPE_X + BUTTON_SIZE, y + BUTTON_SIZE))
-    return rects
+    """Return cached shape button rects."""
+    if _SHAPE_BUTTON_RECTS is None:
+        _init_button_caches(None)
+    return _SHAPE_BUTTON_RECTS
 
 
 def draw_shape_icon(frame, shape_name, x1, y1, x2, y2):
@@ -213,8 +239,8 @@ def draw_hand_landmarks(frame, hand_landmarks):
         image=frame,
         landmark_list=hand_landmarks,
         connections=HandLandmarksConnections.HAND_CONNECTIONS,
-        landmark_drawing_spec=mp_drawing_styles.get_default_hand_landmarks_style(),
-        connection_drawing_spec=mp_drawing_styles.get_default_hand_connections_style(),
+        landmark_drawing_spec=_DEFAULT_LANDMARK_STYLE,
+        connection_drawing_spec=_DEFAULT_CONNECTION_STYLE,
     )
 
 
@@ -222,10 +248,10 @@ def draw_hand_landmarks(frame, hand_landmarks):
 
 def get_four_finger_tips(results, width, height):
     """Get the 4 finger tips (thumb + index from each hand) as pixel coords."""
-    h1_thumb = get_finger_tip(results.hand_landmarks[0], THUMB_TIP, width, height)
-    h1_index = get_finger_tip(results.hand_landmarks[0], INDEX_FINGER_TIP, width, height)
-    h2_thumb = get_finger_tip(results.hand_landmarks[1], THUMB_TIP, width, height)
-    h2_index = get_finger_tip(results.hand_landmarks[1], INDEX_FINGER_TIP, width, height)
+    h1_thumb = get_finger_tip(results.hand_landmarks[0], HandLandmark.THUMB_TIP, width, height)
+    h1_index = get_finger_tip(results.hand_landmarks[0], HandLandmark.INDEX_FINGER_TIP, width, height)
+    h2_thumb = get_finger_tip(results.hand_landmarks[1], HandLandmark.THUMB_TIP, width, height)
+    h2_index = get_finger_tip(results.hand_landmarks[1], HandLandmark.INDEX_FINGER_TIP, width, height)
     return h1_thumb, h1_index, h2_thumb, h2_index
 
 
@@ -263,9 +289,9 @@ def draw_rectangle_shape(frame, results, color):
 
 def get_three_finger_tips(hand_landmarks, width, height):
     """Get thumb, index, and middle finger tip positions for one hand."""
-    thumb = get_finger_tip(hand_landmarks, THUMB_TIP, width, height)
-    index = get_finger_tip(hand_landmarks, INDEX_FINGER_TIP, width, height)
-    middle = get_finger_tip(hand_landmarks, MIDDLE_FINGER_TIP, width, height)
+    thumb = get_finger_tip(hand_landmarks, HandLandmark.THUMB_TIP, width, height)
+    index = get_finger_tip(hand_landmarks, HandLandmark.INDEX_FINGER_TIP, width, height)
+    middle = get_finger_tip(hand_landmarks, HandLandmark.MIDDLE_FINGER_TIP, width, height)
     return thumb, index, middle
 
 
@@ -341,7 +367,7 @@ def run_hand_tracking_on_webcam():
                 right_idx = get_right_hand_index(results)
                 if right_idx is not None:
                     finger_pos = get_finger_tip(
-                        results.hand_landmarks[right_idx], INDEX_FINGER_TIP, width, height
+                        results.hand_landmarks[right_idx], HandLandmark.INDEX_FINGER_TIP, width, height
                     )
                     # Check color palette (top center)
                     color_sel = check_color_selection(finger_pos, width)
